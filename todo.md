@@ -1,0 +1,6 @@
+- when you create a user verified=false until telegram is connected; this is true for the admin as well, so when the admin is created in the setup process -> verified=false
+- once telegram is connected (name and id) -> connect telegram account badge should be removed from profile page; replace it with a small link "re-connect telegram account"
+- missing signout button when logged in
+- in profile, show all profile data, allow user to edit (gray out email), special button to change password (use state of the art password change procedure)
+- inline telegram bot button is not opening the HOST page once clicked
+- you are hardcoding 8080! instead use .env variables! (also in Make)

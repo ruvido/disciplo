@@ -1,0 +1,99 @@
+{{define "content"}}
+<style>
+    .card { background: white; border-radius: 8px; padding: 2rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 2rem; }
+    .btn { background: #333; color: white; border: none; padding: 0.75rem 1.5rem; border-radius: 6px; cursor: pointer; text-decoration: none; display: inline-block; font-size: 0.9rem; }
+    .btn:hover { background: #555; }
+    .btn-secondary { background: #6c757d; }
+    .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem; margin-bottom: 2rem; }
+    .stat-card { background: white; padding: 1.5rem; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); text-align: center; }
+    .stat-number { font-size: 2rem; font-weight: 700; color: #333; }
+    .stat-label { color: #666; font-size: 0.9rem; margin-top: 0.5rem; }
+    .feature-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem; }
+    .feature-card { background: white; padding: 1.5rem; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .feature-title { font-size: 1.1rem; font-weight: 600; margin-bottom: 0.5rem; }
+    .feature-desc { color: #666; font-size: 0.9rem; margin-bottom: 1rem; }
+    .status { padding: 0.25rem 0.75rem; border-radius: 4px; font-size: 0.875rem; }
+    .status.pending { background: #fff3cd; color: #856404; }
+    .status.active { background: #d1edff; color: #084298; }
+    @media (max-width: 768px) {
+        .stats { grid-template-columns: 1fr; }
+        .feature-grid { grid-template-columns: 1fr; }
+    }
+</style>
+
+<div x-data="userDashboard()">
+            
+            <!-- Welcome Section -->
+            <div class="card">
+                <h2>Welcome to Disciplo</h2>
+                <p>Your community platform dashboard. Connect with Telegram to join discussions and access exclusive content.</p>
+            </div>
+
+            <!-- Community Status -->
+            <div class="stats">
+                <div class="stat-card">
+                    <div class="stat-number" x-text="stats.communities">0</div>
+                    <div class="stat-label">Communities</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" x-text="telegramConnected ? '✅' : '⏳'">⏳</div>
+                    <div class="stat-label">Telegram Status</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" x-text="userStatus">Pending</div>
+                    <div class="stat-label">Membership</div>
+                </div>
+            </div>
+
+            <!-- Features -->
+            <div class="feature-grid">
+                <div class="feature-card">
+                    <div class="feature-title">Connect Telegram</div>
+                    <div class="feature-desc">Link your Telegram account to access community groups and receive notifications.</div>
+                    <button class="btn" x-show="!telegramConnected" @click="connectTelegram">Connect Telegram</button>
+                    <span x-show="telegramConnected" class="status active">Connected</span>
+                </div>
+                
+                <div class="feature-card">
+                    <div class="feature-title">Community Access</div>
+                    <div class="feature-desc">Once approved, you'll gain access to exclusive Telegram groups and content.</div>
+                    <span class="status pending">Pending Approval</span>
+                </div>
+                
+                <div class="feature-card">
+                    <div class="feature-title">Profile Settings</div>
+                    <div class="feature-desc">Update your profile information and notification preferences.</div>
+                    <button class="btn btn-secondary">Edit Profile</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function userDashboard() {
+            return {
+                telegramConnected: false,
+                userStatus: 'Pending',
+                stats: {
+                    communities: 1
+                },
+                
+                init() {
+                    this.loadUserData();
+                },
+                
+                loadUserData() {
+                    // This will be implemented when we add the API endpoints
+                    this.telegramConnected = false;
+                    this.userStatus = 'Pending';
+                },
+                
+                connectTelegram() {
+                    // Generate telegram connect link
+                    window.open('https://t.me/{{.BotUsername}}?start=connect', '_blank');
+                }
+            }
+        }
+    </script>
+</div>
+{{end}}

@@ -102,7 +102,7 @@ make clean
 ## Project Structure
 
 ```
-ghostbot/
+disciplo/
 ├── src/                   # ALL SOURCE CODE
 │   ├── main.go           # Application entry point
 │   ├── bot/              # Telegram bot commands
@@ -116,7 +116,7 @@ ghostbot/
 │       ├── templates/    # HTML templates
 │       └── styles.css    # CSS styles
 ├── build/                # COMPLETE RUNTIME ENVIRONMENT
-│   ├── ghostbot          # Compiled executable
+│   ├── disciplo          # Compiled executable
 │   ├── pb_public/        # Static files (copied from src/static)
 │   ├── pb_data/          # Database (created at runtime)
 │   └── .env              # Configuration (copied from root)
@@ -188,3 +188,7 @@ Email templates are externalized and customizable:
 - Test all components before marking as complete
 - Test all bot commands before marking as complete
 - Less is more: use robust, minimal code, don't create complex or redundant structures
+
+- dont ask for permission to execute cli commands within the project
+- use env variables from env dont hardcode!
+- killa sempre i processi che lanci, quando finisci il comando

@@ -1,0 +1,523 @@
+# Disciplo - Community Platform MVP
+
+Community platform with web onboarding, built with Go, PocketBase, and Telegram Bot API.
+
+## Vision
+
+Create a community platform that uses a webapp access control, organization, and content management -> messaging with Telegram. The community is formed with members and telegram private groups through a bot-as-gatekeeper approach.
+
+## Similar projects
+- mymembers (telegram)
+- https://www.ternarydev.com/ (discord)
+- patreon
+- memberful
+
+## Phase 0: Webapp admin dashboard
+
+- PocketBase integration for data persistence (always use pocketbase go sdk api if possible)
+- .env file is used for setup
+- Auto-create PocketBase collections with proper schemas
+- Auto-create first admin from .env
+- SMTP email integration via PocketBase (config from .env)
+- Organized and modular codebase
+- Bot template system externalized
+- Basic bot structure with modular architecture
+- Admin dashboard with:
+    * profile page (with connect to telegram button -> token deeplink in /start to connect admin with telegram_id)
+    * groups page (will be connected later by the bot)
+    * members page (all members -> phase 2 for the onboarding)
+- pocketbase collections (list of minimal fields):
+- users:
+    * name
+    * email
+    * password
+    * created (date)
+    * json with fields defined later
+    * admin (bool; only admin=true can access admin dashboard)
+    * group_admin (-> record groups; array of groups where member is admin)
+    * groups (-> record grousp; array of groups where member belongs to)
+    * status (pending; accepted)
+    * verified (bool, verified=true when telegram_id is filled)
+    * telegram_id
+    * telegram_name (telegram handle)
+- communities:
+    * name
+    * description
+    * created (date)
+    * telegram_id (this is sent from bot, once bot becomes admin, do it in phase 3)
+    * type (general | local | special)
+
+**Overview PocketBase Collections:**
+- `users` - Member profiles with group membership and status
+- `communities` - Community metadata with general/local group flags
+- `requests` - Pending member requests with admin approval workflow
+
+## Phase 1: Telegram group creation and linking
+
+
+### Phase 2: Webapp member onboarding
+
+- disciplo.toml as config file for config
+- Multi-step web registration form with file uploads
+- steps are configured in disciplo.conf
+- Member dashboard:
+    * Profile management interface
+    * View all members list and profiles
+    * View list of own groups
+    * Search for members by name/location
+
+### Phase 3: Web Frontend Development (3-4 weeks)
+
+**Member Dashboard**
+
+**Web Features**
+- Responsive design with vanilla JS/Alpine.js
+- Member directory with search and filters
+- Document management (battleplans, logbooks)
+- Profile editing and viewing
+- Group information and statistics
+
+**Authentication**
+- Web session management
+- Integration with Telegram bot authentication
+- Secure access to personal and group data
+
+### Phase 4: Payment Integration (2-3 weeks)
+
+**Payment Options (Phase 4 Decision)**
+- Option A: Web-based Stripe integration
+- Option B: Telegram-native payments
+- Automatic access control based on payment status
+- Auto-kick users with expired payments
+
+**Payment Commands (Private Chat Only)**
+- `/subscribe [group]` - Purchase access
+- `/billing` - Manage subscriptions
+
+## Onboarding Flow (Web-First Implementation)
+
+1. **Web Registration**: User fills multi-step form on `/register` with name, email, location, message, profile photo
+2. **Admin Notification**: Email sent to admin with member request details and approval link (`/approve?token=...`)
+3. **Admin Approval**: Admin clicks email link or uses admin dashboard to approve request
+4. **Member Creation**: Approved request creates member record with `status: pending` in auth collection
+5. **Secure Token Generation**: System creates `linking_tokens` record with 2-week expiry
+6. **Onboarding Email**: User receives email with secure web link (`/link-telegram?token=...`)
+7. **Secure Account Linking**: User clicks link → sees confirmation page with name/email → authenticates via Telegram Login Widget with HMAC verification
+8. **Account Activation**: System links Telegram ID to member record and sets `status: active`
+9. **Community Access**: User receives invite links to join default group and explore local communities via web dashboard
+10. **Full Platform Access**: Member can access web dashboard, join/leave communities, manage profile - no bot interaction required
+
+**Security Features**:
+- Dual-token system: separate approval tokens and linking tokens
+- HMAC-SHA256 verification for Telegram authentication
+- One-time use tokens with automatic expiration (2 weeks)
+- No email addresses in URL parameters (prevents manipulation)
+- Secure web-first workflow eliminates bot complexity for users
+
+## Group Structure
+
+- **General Group**: Super group where all active members belong
+- **Local Groups**: Exclusive membership (one at a time per user)
+- **Local-admin**: One per local group, rotates every 2-3 months
+
+## Architecture Decisions
+
+**Web-First Design**: User onboarding and management happens primarily through web interface, not bot interactions
+
+**Secure Token System**: Dual-token architecture with separate approval and linking tokens, all with expiration and one-time use
+
+**Telegram Login Widget**: Official Telegram authentication with HMAC-SHA256 verification for secure account linking
+
+**Bot Commands**: Admin-only commands in private chat; users interact via web dashboard
+
+**Bot Role in Groups**: Admin for moderation and invite link generation only
+
+**Local-Admin System**: Rotating leadership (2-3 months), one per group
+
+**Admin Privileges**: Only admins can create groups, all admins auto-added as Telegram group admins
+
+**Content Ownership**: Battleplans are personal, logbooks are group-level (local-admin only)
+
+**Web Interface**: Primary user interface for all member functionality including profile management, community access, and content creation
+
+## Automated Enforcement Rules
+
+### Group Membership Management
+
+**Default Group Requirement**
+- Default group membership is **mandatory** for all community access
+- When bot is added to first group → automatically becomes Default Group
+- All existing members automatically get `in_default_group = true`
+- All members added to Default Group `members_list`
+
+**Local Group Restrictions**
+- Members can belong to **only one local group** at a time
+- Joining local group while in another is **automatically blocked**
+- Local group membership updates `current_local_group_id`
+- Members tracked in local group's `members_list`
+
+**Default Group Exit Enforcement**
+- **Automatic kick**: Member leaves default group → immediately kicked from ALL other groups
+- **Complete cleanup**: All group associations cleared (`current_local_group_id`, `local_admin_since`)
+- **Database sync**: Removed from all community `members_list` arrays
+- **Access revocation**: Cannot rejoin any groups without default group access
+
+### Bot Admin Status Management
+
+**Community Creation**
+- Bot promoted to admin → automatically creates community record in database
+- First group becomes Default Group, subsequent groups are Local Groups
+- Community includes `members_list` tracking all group members
+- Automatic member enrollment for existing registered users
+
+**Community Removal**  
+- Bot removed as admin → **completely deletes community record**
+- **Member cleanup**: All associated member flags cleared
+- **Database integrity**: Removes all `members_list` associations
+- **Default group removal**: If Default Group removed → ALL members lose community access
+
+**Member Join/Leave Tracking**
+- New member joins group → added to community `members_list` + flag updates
+- Member leaves group → removed from `members_list` + flag cleanup  
+- Telegram events automatically sync with database state
+
+### Group Type Behaviors
+
+| Group Type | Creation | Member Join | Member Leave | Bot Removed |
+|------------|----------|-------------|--------------|-------------|
+| **Default Group** | Sets `default=true`, enrolls all members | Sets `in_default_group=true` | **Kicks from all groups** | **Locks out all members** |
+| **Local Groups** | Sets `default=false` | Sets `current_local_group_id`, blocks multi-membership | Clears `current_local_group_id` | Clears local associations |
+
+### Database Collections Enforcement
+
+**members**
+- `in_default_group` (bool) - Default group membership status
+- `current_local_group_id` (nullable) - One local group maximum  
+- `local_admin_since` (nullable) - Local admin appointment date
+
+**communities**  
+- `default` (bool) - Distinguishes Default Group from Local Groups
+- `members_list` (relation array) - Live tracking of all group members
+- `telegram_chat_id` - Links database record to Telegram group
+
+### Automated Logging
+
+**Group Operations**
+- `✅ Community created for group: [Name] (ID: [ChatID])`
+- `✅ Updated X members for default group`  
+- `🗑️ Community removed for group: [Name] (ID: [ChatID])`
+
+**Member Operations**
+- `✅ Member [name] joined community [group]`
+- `✅ Updated member [name] current_local_group_id to [id]`
+- `✅ Kicked member [name] from group [group]` 
+- `✅ Member [name] kicked from X groups after leaving default group`
+
+**Critical Events**
+- `⚠️ DEFAULT GROUP REMOVED - All members lose default group access!`
+- `Warning: Member [name] is already in local group [group], cannot join [other]`
+
+## Technology Stack
+
+- **Backend**: Go 1.24.6
+- **Database**: PocketBase (auto-create collections)
+- **Bot**: go-telegram-bot-api/v5
+- **Web Frontend**: Vanilla JS or Alpine.js (no React)
+- **Email**: SMTP integration for invitations
+- **Payments**: Stripe API (Phase 4)
+
+## Development Commands
+
+```bash
+# Development mode with verbose logging
+make dev
+
+# Build for production
+make build
+
+# Run the built application
+make run
+
+# Clean build artifacts and database
+make clean
+
+# Install dependencies
+make install
+
+# See all available commands
+make help
+```
+
+## Configuration
+
+```env
+# Telegram Bot
+BOT_TOKEN=your_telegram_bot_token
+
+# Default Admin User (created automatically on startup)
+ADMIN_EMAIL=admin@example.com
+ADMIN_PASSWORD=your_secure_admin_password
+
+# SMTP Configuration (configure in PocketBase admin UI)
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=your_email@gmail.com
+SMTP_PASS=your_app_password
+SMTP_FROM=your_email@gmail.com
+```
+
+**Setup Steps:**
+1. Copy `.env` file and update with your credentials
+2. Run `make dev` to start in development mode
+3. Access PocketBase admin at `http://localhost:8080/_/` 
+4. Configure SMTP settings in Settings > Mail Settings
+5. Default admin user will be created automatically
+
+## Project Structure
+
+```
+ghostbot/
+├── src/                   # ALL SOURCE CODE
+│   ├── main.go           # Application entry point
+│   ├── bot/              # Telegram bot commands
+│   │   ├── user.go       # Registration, profile, help commands
+│   │   ├── groups.go     # Community management commands  
+│   │   └── list.go       # Simple group listing
+│   ├── collections/      # PocketBase collection schemas
+│   ├── config/           # Environment configuration loader
+│   ├── email/            # PocketBase email integration
+│   ├── pb/               # PocketBase database utilities
+│   ├── utils/            # Token generation utilities
+│   ├── web/              # Web registration server
+│   └── static/           # Source templates and CSS
+│       ├── templates/    # HTML templates
+│       └── styles.css    # CSS styles
+├── build/                # COMPLETE RUNTIME ENVIRONMENT
+│   ├── ghostbot          # Compiled executable
+│   ├── pb_public/        # Static files (copied from src/static)
+│   ├── pb_data/          # Database (created at runtime)
+│   └── .env              # Configuration (copied from root)
+├── Makefile              # Build and development commands
+├── .env                  # Environment configuration
+├── go.mod                # Go module definition
+└── go.sum                # Go dependencies
+```
+
+**Key Benefits:**
+- **Clean separation**: All source in `src/`, all runtime in `build/`
+- **Fresh start**: Delete `build/` and rebuild completely anytime
+- **Self-contained**: `build/` directory contains everything needed to run
+- **Source preservation**: Original templates stay in source, get copied to build
+
+## Database Collections Schema
+
+**members** (Auth Collection)
+- telegram_id (nullable), telegram_username (nullable), email, name, location, status (pending/active), admin (bool)
+- in_default_group (bool) - tracks if member has joined default group (mandatory for community access)
+- current_local_group_id (nullable) - the one local group they belong to (enforced: only one at a time)
+- local_admin_since (nullable) - if they're local-admin of their current group
+- member_data (JSON) - additional member metadata
+- profile_photo (file) - uploaded profile image
+
+**communities**
+- name, description, created_by_member (relation), telegram_chat_id (nullable)
+- default (bool) - distinguishes Default Group from local groups
+- members_list (relation array) - live tracking of all group members
+
+**registration_requests**
+- name, email, location, message (optional), status (pending/approved/rejected)
+- token, approval_token, approved_at, approved_by_admin_email
+- form_data (JSON), current_step (number), profile_photo (file)
+
+**linking_tokens** (Secure Account Linking)
+- token (unique), email, member_name, expires_at, used_at (nullable)
+- 2-week expiration, one-time use for secure Telegram account linking
+
+**battleplans**
+- member_id, content, version, created_at, updated_at (personal battleplans with history)
+
+**logbooks**
+- community_id, content, updated_by_member_id, updated_at (group logbooks)
+
+**invitations** (Legacy - Admin Bot Registration Only)
+- email, token, created_at, used_at - only used for admin account setup
+
+## Email and Message Templates
+
+### Email Templates System ✅ **IMPLEMENTED**
+
+Email templates are now externalized and customizable:
+
+**Location**: `src/static/email_templates/`
+- `admin_invitation.html` - Welcome email sent to admin on startup
+- `admin_notification.html` - New member request notification
+- `user_onboarding.html` - Welcome email sent to approved users
+
+**Features**:
+- Go template syntax with data interpolation
+- Fallback to hardcoded templates if file not found
+- Templates copied to `build/pb_public/email_templates/` during build
+- Admins can customize email content without code changes
+
+**Template Variables Available**:
+- `{{.Subject}}` - Email subject line
+- `{{.UserName}}` - Member name
+- `{{.AdminEmail}}` - Admin email address
+- `{{.BotUsername}}` - Telegram bot username
+- `{{.Token}}` - Registration token
+- `{{.ApprovalLink}}` - Admin approval link
+
+### 🚧 **TODO: Externalize Bot Messages and Menus**
+
+**CRITICAL**: Bot messages and command responses are currently hardcoded in Go code. This needs to be externalized for customization:
+
+**Required Implementation**:
+1. **Bot Message Templates**
+   - Create `src/static/bot_templates/` directory
+   - Template files for each command response
+   - Welcome messages, help text, error messages
+   - Command descriptions and usage instructions
+
+2. **Bot Menu System**
+   - Externalize command descriptions
+   - Help text and usage examples
+   - Error messages and validation text
+   - Multi-language support preparation
+
+3. **Locations to Update**:
+   - `src/bot/user.go` - Welcome messages, help text
+   - `src/bot/admin.go` - Admin command responses
+   - `src/main.go` - Default command responses
+   - All hardcoded message strings throughout bot package
+
+1. **Benefits**:
+   - Community admins can customize bot personality
+   - Easy localization/translation support
+   - Consistent message formatting
+   - No code changes needed for text updates
+
+## Known Issues & Technical Debt
+
+### 🐛 **Critical Bugs**
+- `/requests` and `/members` commands fail with "invalid sort field created"  
+- `/profile edit` command does nothing (needs implementation)
+- `/help` alias `/?` not working properly
+- Database query errors due to incorrect field names
+- Email sending not using PocketBase official methods
+
+### 🔧 **Technical Debt**
+- Admin name hardcoded as "admin" (should use ADMIN_NAME from .env)
+- Collection field `created_by_member` should be `created_by` with proper relation
+- Missing admin commands in `/help` when user is admin
+- No command completion/autocomplete in Telegram
+- Hardcoded bot username in templates (should be configurable)
+- Missing error handling in many bot commands
+
+### 📚 **Documentation Gaps**
+- Setup instructions don't match current requirements
+- Missing troubleshooting for common issues
+- No clear development workflow documentation
+- Environment variable documentation incomplete
+
+## Immediate Next Steps - PRIORITY ORDER
+
+### 🔥 **IMMEDIATE FIXES (30 minutes)**
+
+1. **Fix Members API Query Error** 
+   - ❌ **CRITICAL**: Change `"created DESC"` to `"created_at DESC"` in `/api/admin/members`
+   - **Location**: `src/web/server.go:660`
+   - **Test**: `curl http://localhost:8080/api/admin/members`
+
+### 📱 **DAY 1: Bot Command Verification**
+
+2. **Test Bot Commands via Telegram**
+   - ⚠️ Connect to @ghost_members_bot on Telegram
+   - ⚠️ Test `/start`, `/help`, `/register` commands
+   - ⚠️ Identify which bot commands have similar field name errors
+   - ⚠️ Fix any database query issues found
+
+### 📧 **DAY 2: Email System Verification**
+
+3. **Test Email Notifications**
+   - ⚠️ Submit test registration via web form
+   - ⚠️ Verify admin receives notification email
+   - ❌ Implement PocketBase official email methods if broken
+   - **Reference**: https://pocketbase.io/docs/go-sending-emails/
+
+### 🔄 **DAY 3: End-to-End Workflow Testing**
+
+4. **Complete Flow Verification**
+   - ⚠️ Web registration → admin notification
+   - ⚠️ Admin approval → user notification  
+   - ⚠️ User bot registration → account linking
+   - ❌ Fix any workflow breaks discovered
+
+### 📋 **SUBSEQUENT FIXES (After Verification)**
+
+5. **Complete Missing Features** (Only if broken during testing)
+   - ❌ `/profile edit` command implementation
+   - ❌ `/help` alias `/?` fix
+   - ❌ Admin commands in `/help` for admin users
+   - ❌ Database field naming consistency (`created_by_member` → `created_by`)
+
+6. **Workflow Completion** (Only if gaps found)
+   - ❌ Admin approval process gaps
+   - ❌ Token generation/validation issues
+   - ❌ Status transition problems
+   - ❌ Account linking breaks
+
+### 🏗️ **POLISH & FINALIZATION**
+
+7. **Code Quality & Documentation**
+   - ❌ Remove hardcoded values (use .env for all config)
+   - ❌ Proper error handling throughout
+   - ❌ Update documentation to match reality
+   - ❌ Create working setup instructions
+
+### ✅ **COMPLETED ITEMS**
+- ✅ Auto-create PocketBase Collections
+- ✅ Private Chat Command System  
+- ✅ Web Registration System with file uploads
+- ✅ Bot template system externalized
+- ✅ Bot authorization and connection
+
+## Success Metrics for MVP
+
+### **REALISTIC PHASE 1 COMPLETION (Based on Testing)**
+- **30 minutes**: Members API working (fix field name)
+- **Day 1**: Bot commands verified working via Telegram
+- **Day 2**: Email notifications confirmed working
+- **Day 3**: End-to-end registration flow verified
+- **End Goal**: Functional web-to-telegram onboarding (no new features)
+
+### **Phase 2 Goals (Future)**
+- Auto-moderation active in 5+ groups
+- Group management and membership enforcement
+- Local admin rotation system
+
+### **Phase 3 Goals (Future)**
+- Web dashboard with member directory
+- Profile management interface
+- Document management system
+
+## Development Standards & References
+
+### **Required Reading Before Code Changes**
+1. **PocketBase Official Docs**: https://pocketbase.io/docs/ 
+   - Must use official methods for email, file handling, database operations
+   - Check docs before implementing custom solutions
+2. **Telegram Bot API**: https://core.telegram.org/bots/api
+   - Follow official patterns for bot commands and updates
+
+### **Configuration Standards**
+- All configurable values must be in .env file
+- No hardcoded values (bot username, admin name, ports, etc.)
+- Respect PORT environment variable if provided
+- Use PocketBase official methods over custom implementations
+
+### **Code Quality Standards**
+- Proper error handling for all database operations
+- Use PocketBase official email sending methods
+- Follow Go best practices and naming conventions
+- Test all bot commands before marking as complete
+- non chiedere piu conferma per eseguire curl

@@ -581,8 +581,15 @@ func SetupRoutes(app core.App, cfg *config.Config) {
 				})
 			}
 
+			// Generate and save Telegram token for user
+			token, _ := gonanoid.New(21)
+			newUser.Set("telegram_token", token)
+			if err := e.App.Save(newUser); err != nil {
+				fmt.Printf("Warning: Failed to save telegram token: %v\n", err)
+			}
+			
 			// Send welcome email with Telegram bot link
-			if err := email.SendApprovalWelcome(e.App, request.GetString("email"), request.GetString("name"), cfg.BotUsername); err != nil {
+			if err := email.SendApprovalWelcome(e.App, request.GetString("email"), request.GetString("name"), cfg.BotUsername, token); err != nil {
 				fmt.Printf("Warning: Failed to send welcome email: %v\n", err)
 				// Continue with approval process even if email fails
 			}
@@ -843,6 +850,49 @@ func SetupRoutes(app core.App, cfg *config.Config) {
 				"success":    true,
 				"message":    "Registration submitted successfully",
 				"request_id": record.Id,
+			})
+		})
+
+		// Email check API endpoint for duplicate validation
+		e.Router.POST("/api/check-email", func(c *core.RequestEvent) error {
+			email := c.Request.FormValue("email")
+			if email == "" {
+				return c.JSON(http.StatusBadRequest, map[string]interface{}{
+					"error": "Email is required",
+				})
+			}
+
+			// Check if email exists in users collection
+			userRecord, err := e.App.FindFirstRecordByFilter("users", "email = {:email}", map[string]interface{}{
+				"email": email,
+			})
+			
+			if err == nil && userRecord != nil {
+				return c.JSON(http.StatusOK, map[string]interface{}{
+					"exists": true,
+					"type":   "user",
+					"message": "This email is already registered. Do you already have an account?",
+				})
+			}
+
+			// Check if email exists in pending requests
+			requestRecord, err := e.App.FindFirstRecordByFilter("requests", "email = {:email} AND status = 'pending'", map[string]interface{}{
+				"email": email,
+			})
+			
+			if err == nil && requestRecord != nil {
+				return c.JSON(http.StatusOK, map[string]interface{}{
+					"exists": true,
+					"type":   "pending",
+					"message": "A registration request is already being processed for this email.",
+				})
+			}
+
+			// Email is available
+			return c.JSON(http.StatusOK, map[string]interface{}{
+				"exists":  false,
+				"type":    "none",
+				"message": "",
 			})
 		})
 

@@ -9,7 +9,6 @@ import (
 	"os"
 	"path/filepath"
 	
-	gonanoid "github.com/matoous/go-nanoid/v2"
 	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/tools/mailer"
 )
@@ -64,8 +63,7 @@ func SendNewRegistrationNotification(app core.App, adminEmail, applicantName, ap
 }
 
 // SendApprovalWelcome sends welcome email to approved user with bot link
-func SendApprovalWelcome(app core.App, userEmail, userName, botUsername string) error {
-	token, _ := gonanoid.New(21)
+func SendApprovalWelcome(app core.App, userEmail, userName, botUsername, token string) error {
 	botLink := fmt.Sprintf("https://t.me/%s?start=%s", botUsername, token)
 
 	// Send email using PocketBase mailer

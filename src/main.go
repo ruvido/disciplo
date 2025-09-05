@@ -87,8 +87,13 @@ func main() {
 			
 			// Only send email if admin is not yet verified (no telegram_id)
 			if admin.GetString("telegram_id") == "" {
-				// Generate token and send admin invitation email
+				// Generate and save admin token
 				token, _ := gonanoid.New(21)
+				admin.Set("telegram_token", token)
+				if err := e.App.Save(admin); err != nil {
+					log.Printf("⚠️  Failed to save admin telegram token: %v", err)
+				}
+				
 				telegramLink := fmt.Sprintf("https://t.me/%s?start=%s", cfg.BotUsername, token)
 				log.Printf("📱 Telegram Link: %s", telegramLink)
 				
@@ -182,45 +187,56 @@ func handleStartCommand(bot *tgbotapi.BotAPI, message *tgbotapi.Message, app cor
 	var response string
 	
 	if args != "" {
-		// Update admin user with telegram information
-		admin, err := app.FindAuthRecordByEmail("users", cfg.AdminEmail)
-		if err == nil && admin != nil {
-			admin.Set("telegram_id", fmt.Sprintf("%d", message.From.ID))
-			admin.Set("telegram_name", message.From.UserName)
-			
-			// Set verified to true when all telegram fields are filled
-			telegramID := admin.GetString("telegram_id")
-			telegramName := admin.GetString("telegram_name")
-			if telegramID != "" && telegramName != "" {
-				admin.Set("verified", true)
-			}
-			
-			if err := app.Save(admin); err != nil {
-				log.Printf("❌ Failed to update admin telegram info: %v", err)
-			} else {
-				log.Printf("✅ Admin telegram info updated in database")
-			}
-		}
+		// Find user by telegram_token (works for both admin and regular users)
+		user, err := app.FindFirstRecordByFilter("users", "telegram_token = {:token}", map[string]interface{}{
+			"token": args,
+		})
 		
-		// Use template for admin connection success message
-		templateData := struct {
-			FirstName string
-			IsAdmin bool
-		}{
-			FirstName: message.From.FirstName,
-			IsAdmin: true,
-		}
-		
-		if templateMsg, err := loadBotTemplate("connection_success.md", templateData); err == nil {
-			response = templateMsg
+		if err != nil || user == nil {
+			response = "❌ **Invalid or Expired Token**\n\nThe token you used is not valid or has expired. Please contact your administrator for a new invitation link."
+			log.Printf("❌ Invalid token used: %s", args)
 		} else {
-			// Fallback message
-			response = fmt.Sprintf("🎉 **Telegram Connected Successfully!**\n\nWelcome %s! Your Telegram account has been linked to Disciplo.\n\n✅ **Account Status**: Accepted\n👑 **Role**: Administrator\n🌐 **Community**: Disciplo\n\nYou can now access your dashboard to manage your profile and community settings.",
-				message.From.FirstName)
+			
+			// Update user with Telegram information
+			user.Set("telegram_id", fmt.Sprintf("%d", message.From.ID))
+			user.Set("telegram_name", message.From.UserName)
+			user.Set("verified", true) // Now verified since Telegram is linked
+			user.Set("telegram_token", "") // Clear the token after successful linking
+			
+			if err := app.Save(user); err != nil {
+				log.Printf("❌ Failed to update user telegram info: %v", err)
+				response = "❌ **Connection Failed**\n\nThere was an error linking your account. Please try again or contact support."
+			} else {
+				// Determine user role for message
+				isAdmin := user.GetBool("admin")
+				userName := user.GetString("name")
+				
+				// Use template for connection success message
+				templateData := struct {
+					FirstName string
+					IsAdmin bool
+				}{
+					FirstName: message.From.FirstName,
+					IsAdmin: isAdmin,
+				}
+				
+				if templateMsg, err := loadBotTemplate("connection_success.md", templateData); err == nil {
+					response = templateMsg
+				} else {
+					// Fallback message based on role
+					if isAdmin {
+						response = fmt.Sprintf("🎉 **Telegram Connected Successfully!**\n\nWelcome %s! Your Telegram account has been linked to Disciplo.\n\n✅ **Account Status**: Accepted\n👑 **Role**: Administrator\n🌐 **Community**: Disciplo\n\nYou can now access your dashboard to manage your profile and community settings.",
+							message.From.FirstName)
+					} else {
+						response = fmt.Sprintf("🎉 **Telegram Connected Successfully!**\n\nWelcome %s! Your Telegram account has been linked to Disciplo.\n\n✅ **Account Status**: Verified\n👤 **Role**: Member\n🌐 **Community**: Disciplo\n\nYou are now verified and can access community features.",
+							message.From.FirstName)
+					}
+				}
+				
+				log.Printf("🔗 USER LINKED - Name: %s | Email: %s | Admin: %v | TG_ID: %d | Username: @%s",
+					userName, user.GetString("email"), isAdmin, message.From.ID, message.From.UserName)
+			}
 		}
-		
-		log.Printf("🔗 ADMIN LINKED - Token: %s | TG_ID: %d | Username: @%s | Name: %s %s",
-			args, message.From.ID, message.From.UserName, message.From.FirstName, message.From.LastName)
 	} else {
 		response = "Welcome to **Disciplo**! 🎉\n\nTo connect your Telegram account, you need an invitation token from the admin.\n\n**How to get access:**\n1. Contact your administrator\n2. Get an invitation link\n3. Click the link to return here with a token"
 	}

@@ -13,6 +13,7 @@ import (
 	gonanoid "github.com/matoous/go-nanoid/v2"
 	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/tools/types"
+	"golang.org/x/crypto/bcrypt"
 )
 
 type AdminData struct {
@@ -440,9 +441,24 @@ func SetupRoutes(app core.App, cfg *config.Config) {
 				return c.Redirect(http.StatusFound, "/login")
 			}
 			
-			// Generate fresh token for admin
-			token, _ := gonanoid.New(21)
-			telegramLink := "https://t.me/" + cfg.BotUsername + "?start=" + token
+			// Generate fresh token for admin only if they don't have one or it's expired
+			var telegramLink string
+			existingToken := user.GetString("telegram_token")
+			tokenCreated := user.GetDateTime("telegram_token_created")
+			
+			// Check if token exists and is less than 1 hour old
+			if existingToken != "" && time.Since(tokenCreated.Time()) < time.Hour {
+				telegramLink = "https://t.me/" + cfg.BotUsername + "?start=" + existingToken
+			} else {
+				// Generate new token and save it
+				token, _ := gonanoid.New(21)
+				user.Set("telegram_token", token)
+				user.Set("telegram_token_created", types.NowDateTime())
+				if err := e.App.Save(user); err != nil {
+					fmt.Printf("Warning: Failed to save admin telegram token: %v\n", err)
+				}
+				telegramLink = "https://t.me/" + cfg.BotUsername + "?start=" + token
+			}
 			
 			data := AdminData{
 				AdminEmail:   user.GetString("email"),
@@ -476,14 +492,34 @@ func SetupRoutes(app core.App, cfg *config.Config) {
 			return c.JSON(http.StatusOK, map[string]bool{"connected": connected})
 		})
 
-		// API endpoint to generate token for telegram connection
+		// API endpoint to generate token for telegram connection - PROTECTED
 		e.Router.POST("/api/generate-token", func(c *core.RequestEvent) error {
-			// For now, generate a simple token - in a real app you'd want to store this temporarily
+			// Require authentication and only allow users to generate tokens for themselves
+			user := getAuthenticatedUser(c)
+			if user == nil {
+				return c.JSON(http.StatusUnauthorized, map[string]interface{}{
+					"success": false,
+					"error":   "Authentication required",
+				})
+			}
+
+			// Generate token and store it in user record
 			token, err := gonanoid.New(21)
 			if err != nil {
 				return c.JSON(http.StatusInternalServerError, map[string]interface{}{
 					"success": false,
 					"error":   "Failed to generate token",
+				})
+			}
+
+			// Store token in user record with timestamp for expiration
+			user.Set("telegram_token", token)
+			user.Set("telegram_token_created", types.NowDateTime())
+			
+			if err := e.App.Save(user); err != nil {
+				return c.JSON(http.StatusInternalServerError, map[string]interface{}{
+					"success": false,
+					"error":   "Failed to save token",
 				})
 			}
 
@@ -503,6 +539,7 @@ func SetupRoutes(app core.App, cfg *config.Config) {
 				})
 			}
 
+			// Define allowed fields for profile updates
 			var updateData struct {
 				Name string `json:"name"`
 			}
@@ -514,7 +551,25 @@ func SetupRoutes(app core.App, cfg *config.Config) {
 				})
 			}
 
+			// Validate input
+			updateData.Name = strings.TrimSpace(updateData.Name)
+			if updateData.Name == "" {
+				return c.JSON(http.StatusBadRequest, map[string]interface{}{
+					"success": false,
+					"error":   "Name cannot be empty",
+				})
+			}
+
+			if len(updateData.Name) > 100 {
+				return c.JSON(http.StatusBadRequest, map[string]interface{}{
+					"success": false,
+					"error":   "Name too long (max 100 characters)",
+				})
+			}
+
+			// Only update explicitly allowed fields
 			user.Set("name", updateData.Name)
+			
 			if err := e.App.Save(user); err != nil {
 				return c.JSON(http.StatusInternalServerError, map[string]interface{}{
 					"success": false,
@@ -558,10 +613,13 @@ func SetupRoutes(app core.App, cfg *config.Config) {
 
 			newUser := core.NewRecord(authCollection)
 			
+			// Generate a temporary password for the user - they will reset it via Telegram
+			tempPassword, _ := gonanoid.New(16)
+			
 			// Set basic auth data from request
 			newUser.Set("name", request.GetString("name"))
 			newUser.Set("email", request.GetString("email"))
-			newUser.Set("password", request.GetString("password"))
+			newUser.Set("password", tempPassword) // PocketBase will hash this automatically
 			newUser.Set("emailVisibility", false)
 			// User starts with verified=false until Telegram is linked
 			
@@ -774,6 +832,23 @@ func SetupRoutes(app core.App, cfg *config.Config) {
 			interestsJSON := c.Request.FormValue("interests")
 			whyJoin := c.Request.FormValue("why_join")
 
+			// Validate password strength
+			if len(password) < 8 {
+				return c.JSON(http.StatusBadRequest, map[string]interface{}{
+					"success": false,
+					"error":   "Password must be at least 8 characters long",
+				})
+			}
+
+			// Hash password before storing
+			hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+			if err != nil {
+				return c.JSON(http.StatusInternalServerError, map[string]interface{}{
+					"success": false,
+					"error":   "Failed to process password",
+				})
+			}
+
 			// Parse interests
 			var interests []string
 			if err := json.Unmarshal([]byte(interestsJSON), &interests); err != nil {
@@ -817,7 +892,7 @@ func SetupRoutes(app core.App, cfg *config.Config) {
 			// Set record fields
 			record.Set("name", name)
 			record.Set("email", userEmail)
-			record.Set("password", password)
+			record.Set("password", string(hashedPassword))
 			dobDateTime := types.DateTime{}
 			dobDateTime.Scan(dob)
 			record.Set("date_of_birth", dobDateTime)

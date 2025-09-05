@@ -107,25 +107,26 @@
                         if (response.ok) {
                             this.success = 'Login successful! Redirecting...';
                             
-                            // Store the JWT token in a secure cookie and localStorage
+                            // Store the JWT token in a secure cookie only
                             if (data.token) {
-                                console.log('Setting auth token:', data.token.substring(0, 20) + '...');
-                                console.log('User data:', data.record);
-                                
                                 // Set cookie for authentication (secure only in production)
                                 const isSecure = window.location.protocol === 'https:';
                                 const cookieValue = `pb_auth=${data.token}; path=/; max-age=1209600; samesite=strict${isSecure ? '; secure' : ''}`;
                                 document.cookie = cookieValue;
-                                console.log('Set cookie:', cookieValue);
                                 
-                                // Also store in localStorage as backup (for client-side checks)
-                                localStorage.setItem('pb_auth', data.token);
-                                localStorage.setItem('user_data', JSON.stringify(data.record));
+                                // Store minimal user data (no sensitive information)
+                                const userData = {
+                                    id: data.record.id,
+                                    name: data.record.name,
+                                    email: data.record.email,
+                                    admin: data.record.admin || false,
+                                    verified: data.record.verified || false
+                                };
+                                localStorage.setItem('user_data', JSON.stringify(userData));
                                 
                                 // Determine redirect URL based on admin status
                                 const isAdmin = data.record && data.record.admin === true;
                                 const redirectUrl = isAdmin ? '/admin/dashboard' : '/dashboard';
-                                console.log('Redirecting to:', redirectUrl, 'Admin status:', isAdmin);
                                 
                                 // Immediate redirect (no delay needed)
                                 window.location.href = redirectUrl;

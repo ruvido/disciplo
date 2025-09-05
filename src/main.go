@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"log"
 	"strings"
+	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	gonanoid "github.com/matoous/go-nanoid/v2"
@@ -196,6 +197,23 @@ func handleStartCommand(bot *tgbotapi.BotAPI, message *tgbotapi.Message, app cor
 			response = "❌ **Invalid or Expired Token**\n\nThe token you used is not valid or has expired. Please contact your administrator for a new invitation link."
 			log.Printf("❌ Invalid token used: %s", args)
 		} else {
+			// Check token expiration (24 hours for regular users, 1 hour for fresh admin tokens)
+			tokenCreated := user.GetDateTime("telegram_token_created")
+			isAdmin := user.GetBool("admin")
+			
+			var tokenExpired bool
+			if isAdmin {
+				// Admin tokens expire after 1 hour
+				tokenExpired = time.Since(tokenCreated.Time()) > time.Hour
+			} else {
+				// User tokens expire after 24 hours  
+				tokenExpired = time.Since(tokenCreated.Time()) > 24*time.Hour
+			}
+			
+			if tokenExpired {
+				response = "❌ **Token Expired**\n\nYour invitation token has expired. Please request a new invitation link from your administrator."
+				log.Printf("❌ Expired token used: %s (created: %v)", args, tokenCreated)
+			} else {
 			
 			// Update user with Telegram information
 			user.Set("telegram_id", fmt.Sprintf("%d", message.From.ID))
@@ -236,6 +254,7 @@ func handleStartCommand(bot *tgbotapi.BotAPI, message *tgbotapi.Message, app cor
 				log.Printf("🔗 USER LINKED - Name: %s | Email: %s | Admin: %v | TG_ID: %d | Username: @%s",
 					userName, user.GetString("email"), isAdmin, message.From.ID, message.From.UserName)
 			}
+		}
 		}
 	} else {
 		response = "Welcome to **Disciplo**! 🎉\n\nTo connect your Telegram account, you need an invitation token from the admin.\n\n**How to get access:**\n1. Contact your administrator\n2. Get an invitation link\n3. Click the link to return here with a token"

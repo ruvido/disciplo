@@ -107,11 +107,31 @@
                         if (response.ok) {
                             this.success = 'Login successful! Redirecting...';
                             
-                            // Immediate redirect based on admin status
-                            if (data.record && data.record.admin) {
-                                window.location.replace('/admin/dashboard');
+                            // Store the JWT token in a secure cookie and localStorage
+                            if (data.token) {
+                                console.log('Setting auth token:', data.token.substring(0, 20) + '...');
+                                console.log('User data:', data.record);
+                                
+                                // Set cookie for authentication (secure only in production)
+                                const isSecure = window.location.protocol === 'https:';
+                                const cookieValue = `pb_auth=${data.token}; path=/; max-age=1209600; samesite=strict${isSecure ? '; secure' : ''}`;
+                                document.cookie = cookieValue;
+                                console.log('Set cookie:', cookieValue);
+                                
+                                // Also store in localStorage as backup (for client-side checks)
+                                localStorage.setItem('pb_auth', data.token);
+                                localStorage.setItem('user_data', JSON.stringify(data.record));
+                                
+                                // Determine redirect URL based on admin status
+                                const isAdmin = data.record && data.record.admin === true;
+                                const redirectUrl = isAdmin ? '/admin/dashboard' : '/dashboard';
+                                console.log('Redirecting to:', redirectUrl, 'Admin status:', isAdmin);
+                                
+                                // Immediate redirect (no delay needed)
+                                window.location.href = redirectUrl;
                             } else {
-                                window.location.replace('/dashboard');
+                                console.error('No token received from server');
+                                this.error = 'Authentication failed - no token received';
                             }
                         } else {
                             this.error = data.message || 'Invalid email or password';

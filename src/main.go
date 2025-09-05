@@ -5,8 +5,13 @@ import (
 	"disciplo/src/email"
 	_ "disciplo/src/migrations"
 	"disciplo/src/web"
+	"bytes"
 	"fmt"
+	"html/template"
+	"os"
+	"path/filepath"
 	"log"
+	"strings"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	gonanoid "github.com/matoous/go-nanoid/v2"
@@ -35,17 +40,11 @@ func main() {
 			settings := e.App.Settings()
 			settings.SMTP.Enabled = true
 			settings.SMTP.Host = cfg.SMTPHost
-			if cfg.SMTPPort != "" {
-				if cfg.SMTPPort == "587" {
-					settings.SMTP.Port = 587
-				} else if cfg.SMTPPort == "465" {
-					settings.SMTP.Port = 465
-				}
-			}
+			settings.SMTP.Port = 587
 			settings.SMTP.Username = cfg.SMTPUsername
 			settings.SMTP.Password = cfg.SMTPPassword
 			settings.SMTP.AuthMethod = "PLAIN"
-			settings.SMTP.TLS = true
+			settings.SMTP.TLS = false // Port 587 uses STARTTLS
 			
 			if cfg.SMTPFrom != "" {
 				settings.Meta.SenderName = cfg.SMTPFrom
@@ -181,8 +180,22 @@ func handleStartCommand(bot *tgbotapi.BotAPI, message *tgbotapi.Message, app cor
 			}
 		}
 		
-		response = fmt.Sprintf("✅ **Admin Account Connected**\n\nToken: `%s`\n\n**Your Telegram Details:**\n• ID: `%d`\n• Username: @%s\n• Name: %s %s\n\nYour admin account is now linked to Telegram!",
-			args, message.From.ID, message.From.UserName, message.From.FirstName, message.From.LastName)
+		// Use template for admin connection success message
+		templateData := struct {
+			FirstName string
+			IsAdmin bool
+		}{
+			FirstName: message.From.FirstName,
+			IsAdmin: true,
+		}
+		
+		if templateMsg, err := loadBotTemplate("connection_success.md", templateData); err == nil {
+			response = templateMsg
+		} else {
+			// Fallback message
+			response = fmt.Sprintf("🎉 **Telegram Connected Successfully!**\n\nWelcome %s! Your Telegram account has been linked to Disciplo.\n\n✅ **Account Status**: Accepted\n👑 **Role**: Administrator\n🌐 **Community**: Disciplo\n\nYou can now access your dashboard to manage your profile and community settings.",
+				message.From.FirstName)
+		}
 		
 		log.Printf("🔗 ADMIN LINKED - Token: %s | TG_ID: %d | Username: @%s | Name: %s %s",
 			args, message.From.ID, message.From.UserName, message.From.FirstName, message.From.LastName)
@@ -193,14 +206,19 @@ func handleStartCommand(bot *tgbotapi.BotAPI, message *tgbotapi.Message, app cor
 	msg := tgbotapi.NewMessage(message.Chat.ID, response)
 	msg.ParseMode = tgbotapi.ModeMarkdown
 
-	// Add inline keyboard for dashboard access
+	// Add inline keyboard for dashboard access only if HTTPS, otherwise show text
 	dashboardURL := cfg.Host + "/dashboard"
-	keyboard := tgbotapi.NewInlineKeyboardMarkup(
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonURL("🌐 Visit Dashboard", dashboardURL),
-		),
-	)
-	msg.ReplyMarkup = keyboard
+	if strings.HasPrefix(cfg.Host, "https://") {
+		keyboard := tgbotapi.NewInlineKeyboardMarkup(
+			tgbotapi.NewInlineKeyboardRow(
+				tgbotapi.NewInlineKeyboardButtonURL("🌐 Visit Dashboard", dashboardURL),
+			),
+		)
+		msg.ReplyMarkup = keyboard
+	} else {
+		// For HTTP URLs, add dashboard link as text
+		response += "\n\n🌐 **Dashboard**: " + dashboardURL
+	}
 
 	bot.Send(msg)
 }
@@ -231,4 +249,27 @@ func handleStatusCommand(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 	msg := tgbotapi.NewMessage(message.Chat.ID, response)
 	msg.ParseMode = tgbotapi.ModeMarkdown
 	bot.Send(msg)
+}
+
+// loadBotTemplate loads and renders a bot message template
+func loadBotTemplate(templateName string, data interface{}) (string, error) {
+	// Try to load template from file
+	templatePath := filepath.Join("pb_public", "bot_templates", templateName)
+	content, err := os.ReadFile(templatePath)
+	if err != nil {
+		return "", err
+	}
+	
+	// Parse and execute template
+	tmpl, err := template.New("bot").Parse(string(content))
+	if err != nil {
+		return "", err
+	}
+	
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, data); err != nil {
+		return "", err
+	}
+	
+	return buf.String(), nil
 }

@@ -23,19 +23,28 @@
 
 ## 🔄 PHASE 1 - MEMBER ONBOARDING WORKFLOW
 
-### Web Registration System
+### 1. Web Registration System
 - [ ] Public registration page with form validation
 - [ ] Member application review workflow for admins
 - [ ] Email invitation system for approved members
 - [ ] Member status tracking (pending → approved → active)
+- [ ] Onboarding: 
+    * Multi-step webform with modern components (same as shadcn): fields include -> name, email, password -> date of birth, location, job field (menu a tendina), interests (multiple choices) -> why you want to join (longer text), upload picture of yourself
+    * data goes to requests (pb collection)
+    * new record requests triggers email sending to EMAIL_REQUESTS (disciplo.toml config file, use for now ruvido@gmail.com)
+    * admin receives email (new membership request)
+    * user receives email (your submission has been received)
+    * admin accepts requests -> email to user with deeplink to bot to connect profile with telegram-id
+    * admin accepts requests changes status from pending to accepted, telegram linking success -> verified=true
+    * only when status is accepted then user can login
 
-### Enhanced Bot Features  
+### 2. Enhanced Bot Features  
 - [ ] Member welcome flow with community rules
 - [ ] Automated group invitation after approval
 - [ ] Member verification and status commands
 - [ ] Help system with command documentation
 
-### Admin Tools
+### 3. Admin Tools
 - [ ] Bulk member management (approve/reject multiple)
 - [ ] Member search and filtering
 - [ ] Community analytics dashboard

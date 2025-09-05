@@ -1,0 +1,123 @@
+# Disciplo Community Platform Configuration
+# This file contains application-specific settings that can be modified without restart
+
+[general]
+app_name = "Disciplo"
+email_requests = "ruvido@gmail.com"  # Email to receive new membership requests
+
+[registration]
+# Multi-step registration form configuration
+enabled = true
+public_access = true
+
+# Form step configuration - all fields are required
+[[registration.steps]]
+step = 1
+title = "Account Information"
+fields = ["name", "email", "password"]
+
+[[registration.steps]]  
+step = 2
+title = "Personal Details"
+fields = ["date_of_birth", "city", "location", "job_field", "interests"]
+
+[[registration.steps]]
+step = 3  
+title = "Application"
+fields = ["why_join", "profile_picture"]
+
+# Job field dropdown options
+[registration.job_fields]
+options = [
+    "Technology",
+    "Finance", 
+    "Healthcare",
+    "Education",
+    "Marketing",
+    "Consulting",
+    "Other"
+]
+
+# Interest categories (multiple selection allowed)
+[registration.interests]
+options = [
+    # Community Interests
+    "Networking",
+    "Learning", 
+    "Mentoring",
+    "Collaboration",
+    "Innovation",
+    "Leadership",
+    # Hobbies & Activities
+    "Sport",
+    "Woodworking",
+    "DIY",
+    "Cooking",
+    "Photography", 
+    "Reading",
+    "Music",
+    "Travel",
+    "Gaming",
+    "Art & Design",
+    "Gardening",
+    "Technology",
+    "Writing",
+    "Fitness",
+    "Volunteering"
+]
+
+# Italian regions for location dropdown
+[registration.locations]
+options = [
+    "Abruzzo",
+    "Basilicata", 
+    "Calabria",
+    "Campania",
+    "Emilia-Romagna",
+    "Friuli-Venezia Giulia",
+    "Lazio",
+    "Liguria",
+    "Lombardia",
+    "Marche",
+    "Molise",
+    "Piemonte",
+    "Puglia",
+    "Sardegna",
+    "Sicilia",
+    "Toscana",
+    "Trentino-Alto Adige",
+    "Umbria",
+    "Valle d'Aosta",
+    "Veneto"
+]
+
+# Picture upload settings
+[registration.picture]
+max_size_mb = 5
+allowed_formats = ["jpg", "jpeg", "png"]
+max_dimension_px = 400
+auto_resize = true
+
+[email]
+# Email template settings
+template_engine = "markdown_go_template"
+template_path = "templates/emails"
+
+# Email types configuration
+[email.templates]
+new_request = "new_request.md"           # To admin when new registration
+registration_received = "registration_received.md"  # To user on submission  
+approval_welcome = "approval_welcome.md"     # To user on approval with bot link
+
+[admin]
+# Admin review settings
+requests_page = "/admin/requests"
+bulk_operations = false
+individual_review_only = true
+rejection_reasons = false  # Not implemented
+
+[auth]
+# Authentication settings
+pending_users_can_login = false
+show_signup_link_when_no_user = true
+show_wait_message_when_pending = true

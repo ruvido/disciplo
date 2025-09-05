@@ -120,7 +120,7 @@ func createUsersCollection(app *pocketbase.PocketBase) error {
 
 		collection.Schema.AddField(&core.SchemaField{
 			Name: "telegram_name",
-			Type: schema.FieldTypeText,
+			Type: core.FieldTypeText,
 		})
 
 		return txDao.SaveCollection(collection)
@@ -152,7 +152,7 @@ func createCommunitiesCollection(app *pocketbase.PocketBase) error {
 
 		collection.Schema.AddField(&core.SchemaField{
 			Name: "description",
-			Type: schema.FieldTypeText,
+			Type: core.FieldTypeText,
 		})
 
 		collection.Schema.AddField(&core.SchemaField{
@@ -162,7 +162,7 @@ func createCommunitiesCollection(app *pocketbase.PocketBase) error {
 
 		collection.Schema.AddField(&core.SchemaField{
 			Name: "telegram_username",
-			Type: schema.FieldTypeText,
+			Type: core.FieldTypeText,
 		})
 
 		collection.Schema.AddField(&core.SchemaField{
@@ -241,21 +241,81 @@ func createRequestsCollection(app *pocketbase.PocketBase) error {
 			Type:       core.CollectionTypeBase,
 			ListRule:   core.NewString("@request.auth.admin = true"),
 			ViewRule:   core.NewString("@request.auth.admin = true"),
-			CreateRule: core.NewString("@request.auth.admin = true"),
+			CreateRule: core.NewString(""),  // Allow public registration
 			UpdateRule: core.NewString("@request.auth.admin = true"),
 			DeleteRule: core.NewString("@request.auth.admin = true"),
 		}
 
+		// Basic registration data
 		collection.Schema.AddField(&core.SchemaField{
-			Name: "user_id",
-			Type: core.FieldTypeRelation,
-			Options: &core.RelationOptions{
-				CollectionId:  "users",
-				CascadeDelete: true,
+			Name:     "name",
+			Type:     core.FieldTypeText,
+			Required: true,
+		})
+
+		collection.Schema.AddField(&core.SchemaField{
+			Name:     "email",
+			Type:     core.FieldTypeEmail,
+			Required: true,
+			Unique:   true,
+		})
+
+		collection.Schema.AddField(&core.SchemaField{
+			Name:     "password",
+			Type:     core.FieldTypeText,
+			Required: true,
+		})
+
+		// Personal details
+		collection.Schema.AddField(&core.SchemaField{
+			Name:     "date_of_birth",
+			Type:     core.FieldTypeDate,
+			Required: true,
+		})
+
+		collection.Schema.AddField(&core.SchemaField{
+			Name:     "city",
+			Type:     core.FieldTypeText,
+			Required: true,
+		})
+
+		collection.Schema.AddField(&core.SchemaField{
+			Name:     "location",
+			Type:     core.FieldTypeText,
+			Required: true,
+		})
+
+		collection.Schema.AddField(&core.SchemaField{
+			Name:     "job_field",
+			Type:     core.FieldTypeText,
+			Required: true,
+		})
+
+		collection.Schema.AddField(&core.SchemaField{
+			Name: "interests",
+			Type: core.FieldTypeJson,
+			Required: true,
+		})
+
+		// Application details
+		collection.Schema.AddField(&core.SchemaField{
+			Name:     "why_join",
+			Type:     core.FieldTypeText,
+			Required: true,
+		})
+
+		collection.Schema.AddField(&core.SchemaField{
+			Name: "profile_picture",
+			Type: core.FieldTypeFile,
+			Options: &core.FileOptions{
+				MaxSelect: 1,
+				MaxSize:   5242880, // 5MB
+				MimeTypes: []string{"image/jpeg", "image/jpg", "image/png"},
 			},
 			Required: true,
 		})
 
+		// Status and approval tracking
 		collection.Schema.AddField(&core.SchemaField{
 			Name:    "status",
 			Type:    core.FieldTypeSelect,
@@ -279,14 +339,14 @@ func createRequestsCollection(app *pocketbase.PocketBase) error {
 			Type: core.FieldTypeDate,
 		})
 
+		// User creation reference (when approved)
 		collection.Schema.AddField(&core.SchemaField{
-			Name: "user_data_snapshot",
-			Type: core.FieldTypeJson,
-		})
-
-		collection.Schema.AddField(&core.SchemaField{
-			Name: "rejection_reason",
-			Type: schema.FieldTypeText,
+			Name: "created_user_id",
+			Type: core.FieldTypeRelation,
+			Options: &core.RelationOptions{
+				CollectionId:  "users",
+				CascadeDelete: false,
+			},
 		})
 
 		return txDao.SaveCollection(collection)

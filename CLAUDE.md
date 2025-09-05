@@ -231,3 +231,4 @@ Email templates are externalized and customizable:
 3. **After work**: ALWAYS run `make kill` to clean up processes
 4. **Never assume**: Always verify ports are free with `lsof -i:PORT`
 5. **Process hygiene**: Leave the system clean for the next developer
+- killa 8080 ogni volta che finisci di testare il codice, non lasciare processi aperti

@@ -57,9 +57,9 @@
                 
                 <div x-show="!editMode">
                     <div style="display: grid; gap: 1rem; max-width: 600px;">
-                        <div><strong>Name:</strong> {{.AdminName}}</div>
+                        <div><strong>Name:</strong> {{.AdminName}} <span class="status accepted" style="background: #e7f3ff; color: #0969da; font-size: 0.75rem; padding: 0.25rem 0.5rem; border-radius: 4px; font-weight: 500;">ADMIN</span></div>
                         <div><strong>Email:</strong> {{.AdminEmail}}</div>
-                        <div><strong>Status:</strong> <span class="status accepted">Admin</span></div>
+                        <div><strong>Status:</strong> <span class="status accepted">Accepted</span></div>
                         <div><strong>Verified:</strong> <span x-text="telegramConnected ? 'Yes' : 'No'"></span></div>
                     </div>
                 </div>
@@ -161,7 +161,7 @@
                         <tr>
                             <td>{{.AdminName}}</td>
                             <td>{{.AdminEmail}}</td>
-                            <td><span class="status accepted">Admin</span></td>
+                            <td><span class="status accepted">Accepted</span> <span style="background: #e7f3ff; color: #0969da; font-size: 0.75rem; padding: 0.25rem 0.5rem; border-radius: 4px; font-weight: 500; margin-left: 0.5rem;">ADMIN</span></td>
                             <td><span x-text="telegramConnected ? '✅ Connected' : '⏳ Pending'"></span></td>
                             <td>-</td>
                         </tr>
@@ -196,10 +196,27 @@
                 
                 async checkTelegramStatus() {
                     try {
-                        const response = await fetch('/api/admin/telegram-status');
+                        const token = localStorage.getItem('pb_auth');
+                        const headers = {
+                            'Content-Type': 'application/json'
+                        };
+                        
+                        if (token) {
+                            headers.Authorization = `Bearer ${token}`;
+                        }
+                        
+                        const response = await fetch('/api/admin/telegram-status', { headers });
+                        
+                        if (response.status === 401) {
+                            // Token expired or invalid - redirect to login
+                            logout();
+                            return;
+                        }
+                        
                         const data = await response.json();
                         this.telegramConnected = data.connected;
                     } catch (error) {
+                        console.error('Failed to check telegram status:', error);
                         this.telegramConnected = false;
                     }
                 },
@@ -233,8 +250,22 @@
         }
         
         function logout() {
-            localStorage.removeItem('authToken');
-            window.location.replace('/login');
+            // Clear all authentication data
+            localStorage.removeItem('pb_auth');
+            localStorage.removeItem('user_data');
+            
+            // Clear authentication cookie
+            document.cookie = 'pb_auth=; path=/; max-age=-1; samesite=strict';
+            
+            // Use API logout endpoint for proper server-side cleanup
+            fetch('/api/logout', { method: 'POST' })
+                .then(() => {
+                    window.location.replace('/login');
+                })
+                .catch(() => {
+                    // Even if API call fails, redirect to login
+                    window.location.replace('/login');
+                });
         }
     </script>
 </body>

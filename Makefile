@@ -1,24 +1,31 @@
-.PHONY: dev build run clean kill
+.PHONY: dev dev-email build run clean kill
 
 # Development mode with hot reload and verbose logging
-dev: kill
-	@echo "Starting in development mode..."
+dev:
+	@echo "Starting in development mode (emails are logged, not sent)..."
 	@mkdir -p build/pb_public/email_templates
 	@mkdir -p build/pb_public/bot_templates
 	@cp -r src/static/* build/pb_public/ 2>/dev/null || true
 	@cp .env build/.env 2>/dev/null || true
 	@cd build && . ./.env && go run ../src/main.go serve --dev --http=0.0.0.0:$${PORT:-8080}
 
+# Development mode with real email sending
+dev-email:
+	@echo "Starting in development mode with REAL email sending..."
+	@mkdir -p build/pb_public/email_templates
+	@mkdir -p build/pb_public/bot_templates
+	@cp -r src/static/* build/pb_public/ 2>/dev/null || true
+	@cp .env build/.env 2>/dev/null || true
+	@cd build && . ./.env && go run ../src/main.go serve --http=0.0.0.0:$${PORT:-8080}
+
 # Kill any running instance
 kill:
 	@echo "Killing existing processes..."
-	@-pkill -f "disciplo" 2>/dev/null || true
-	@-pkill -f "go run.*main.go" 2>/dev/null || true
-	@-pkill -f "main.go" 2>/dev/null || true
-	@-lsof -ti:8080 | xargs -r kill -9 2>/dev/null || true
-	@-lsof -ti:8081 | xargs -r kill -9 2>/dev/null || true
-	@-lsof -ti:$${PORT:-8080} | xargs -r kill -9 2>/dev/null || true
-	@sleep 2
+	@pkill -f "disciplo" 2>/dev/null || true
+	@pkill -f "go run.*main.go" 2>/dev/null || true
+	@lsof -ti:8080 | xargs kill -9 2>/dev/null || true
+	@lsof -ti:8090 | xargs kill -9 2>/dev/null || true
+	@echo "Processes killed"
 
 # Build for production
 build:

@@ -232,3 +232,4 @@ Email templates are externalized and customizable:
 4. **Never assume**: Always verify ports are free with `lsof -i:PORT`
 5. **Process hygiene**: Leave the system clean for the next developer
 - killa 8080 ogni volta che finisci di testare il codice, non lasciare processi aperti
+- kill 8080 after test

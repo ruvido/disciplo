@@ -396,18 +396,18 @@
                     <h2 class="step-title">Account Information</h2>
                     <div class="form-grid">
                         <div class="form-group">
-                            <label class="form-label" for="name">Full Name *</label>
-                            <input type="text" id="name" name="name" class="form-input" required>
+                            <label class="form-label" for="name">Full Name{{if .RequiredFields.name}} *{{end}}</label>
+                            <input type="text" id="name" name="name" class="form-input"{{if .RequiredFields.name}} required{{end}}>
                             <div class="error-message" id="name-error"></div>
                         </div>
                         <div class="form-group">
-                            <label class="form-label" for="email">Email Address *</label>
-                            <input type="email" id="email" name="email" class="form-input" required>
+                            <label class="form-label" for="email">Email Address{{if .RequiredFields.email}} *{{end}}</label>
+                            <input type="email" id="email" name="email" class="form-input"{{if .RequiredFields.email}} required{{end}}>
                             <div class="error-message" id="email-error"></div>
                         </div>
                         <div class="form-group">
-                            <label class="form-label" for="password">Password *</label>
-                            <input type="password" id="password" name="password" class="form-input" required minlength="8">
+                            <label class="form-label" for="password">Password{{if .RequiredFields.password}} *{{end}}</label>
+                            <input type="password" id="password" name="password" class="form-input"{{if .RequiredFields.password}} required{{end}} minlength="8">
                             <div class="error-message" id="password-error"></div>
                         </div>
                     </div>
@@ -418,19 +418,19 @@
                     <h2 class="step-title">Personal Details</h2>
                     <div class="form-grid">
                         <div class="form-group">
-                            <label class="form-label" for="date_of_birth">Date of Birth *</label>
-                            <input type="date" id="date_of_birth" name="date_of_birth" class="form-input" required>
+                            <label class="form-label" for="date_of_birth">Date of Birth{{if .RequiredFields.date_of_birth}} *{{end}}</label>
+                            <input type="date" id="date_of_birth" name="date_of_birth" class="form-input"{{if .RequiredFields.date_of_birth}} required{{end}}>
                             <div class="error-message" id="date_of_birth-error"></div>
                         </div>
                         <div class="form-grid two-col">
                             <div class="form-group">
-                                <label class="form-label" for="city">City *</label>
-                                <input type="text" id="city" name="city" class="form-input" required>
+                                <label class="form-label" for="city">City{{if .RequiredFields.city}} *{{end}}</label>
+                                <input type="text" id="city" name="city" class="form-input"{{if .RequiredFields.city}} required{{end}}>
                                 <div class="error-message" id="city-error"></div>
                             </div>
                             <div class="form-group">
-                                <label class="form-label" for="location">Region *</label>
-                                <select id="location" name="location" class="form-select" required>
+                                <label class="form-label" for="location">Region{{if .RequiredFields.location}} *{{end}}</label>
+                                <select id="location" name="location" class="form-select"{{if .RequiredFields.location}} required{{end}}>
                                     <option value="">Select region...</option>
                                     {{range .Locations}}
                                     <option value="{{.}}">{{.}}</option>
@@ -440,8 +440,8 @@
                             </div>
                         </div>
                         <div class="form-group">
-                            <label class="form-label" for="job_field">Job Field *</label>
-                            <select id="job_field" name="job_field" class="form-select" required>
+                            <label class="form-label" for="job_field">Job Field{{if .RequiredFields.job_field}} *{{end}}</label>
+                            <select id="job_field" name="job_field" class="form-select"{{if .RequiredFields.job_field}} required{{end}}>
                                 <option value="">Select job field...</option>
                                 {{range .JobFields}}
                                 <option value="{{.}}">{{.}}</option>
@@ -450,7 +450,7 @@
                             <div class="error-message" id="job_field-error"></div>
                         </div>
                         <div class="form-group">
-                            <label class="form-label">Interests * (Select at least 3)</label>
+                            <label class="form-label">Interests{{if .RequiredFields.interests}} * (Select at least 3){{end}}</label>
                             <div class="checkbox-group">
                                 {{range .Interests}}
                                 <div class="checkbox-item">
@@ -469,16 +469,16 @@
                     <h2 class="step-title">Complete Your Application</h2>
                     <div class="form-grid">
                         <div class="form-group">
-                            <label class="form-label" for="why_join">Why do you want to join our community? *</label>
-                            <textarea id="why_join" name="why_join" class="form-input form-textarea" required 
+                            <label class="form-label" for="why_join">Why do you want to join our community?{{if .RequiredFields.why_join}} *{{end}}</label>
+                            <textarea id="why_join" name="why_join" class="form-input form-textarea"{{if .RequiredFields.why_join}} required{{end}} 
                                 placeholder="Tell us about your motivations, what you hope to contribute, and what you're looking to gain from being part of our community..."></textarea>
                             <div class="error-message" id="why_join-error"></div>
                         </div>
                         <div class="form-group">
-                            <label class="form-label">Profile Picture *</label>
+                            <label class="form-label">Profile Picture{{if .RequiredFields.profile_picture}} *{{end}}</label>
                             <div class="file-upload">
                                 <input type="file" id="profile_picture" name="profile_picture" class="file-input" 
-                                    accept="image/jpeg,image/jpg,image/png" required>
+                                    accept="image/jpeg,image/jpg,image/png"{{if .RequiredFields.profile_picture}} required{{end}}>
                                 <div class="file-label">
                                     <span>📸</span>
                                     <span>Click to upload your photo (Max 5MB, JPG/PNG)</span>
@@ -521,6 +521,13 @@
         let currentStep = 1;
         const totalSteps = 3;
 
+        // Required fields configuration from backend
+        const requiredFields = {
+            {{range $field, $required := .RequiredFields}}
+            "{{$field}}": {{$required}},
+            {{end}}
+        };
+
         const stepElements = document.querySelectorAll('.step');
         const progressSteps = document.querySelectorAll('.progress-step');
         const prevBtn = document.getElementById('prevBtn');
@@ -556,18 +563,23 @@
         function validateStep(step) {
             let isValid = true;
             const currentStepEl = document.querySelector(`[data-step="${step}"].step`);
-            const inputs = currentStepEl.querySelectorAll('input[required], select[required], textarea[required]');
+            const inputs = currentStepEl.querySelectorAll('input, select, textarea');
 
             inputs.forEach(input => {
                 const errorEl = document.getElementById(`${input.name}-error`);
                 let error = '';
-
-                if (input.type === 'email' && input.value && !isValidEmail(input.value)) {
-                    error = 'Please enter a valid email address';
-                } else if (input.type === 'password' && input.value && input.value.length < 8) {
-                    error = 'Password must be at least 8 characters';
-                } else if (!input.value.trim()) {
-                    error = `${input.previousElementSibling.textContent.replace(' *', '')} is required`;
+                
+                // Only validate if field is required according to configuration
+                const isRequired = requiredFields[input.name] || false;
+                
+                if (isRequired) {
+                    if (input.type === 'email' && input.value && !isValidEmail(input.value)) {
+                        error = 'Please enter a valid email address';
+                    } else if (input.type === 'password' && input.value && input.value.length < 8) {
+                        error = 'Password must be at least 8 characters';
+                    } else if (!input.value.trim()) {
+                        error = `${input.previousElementSibling.textContent.replace(' *', '').replace(':', '')} is required`;
+                    }
                 }
 
                 if (error) {
@@ -580,8 +592,8 @@
                 }
             });
 
-            // Special validation for interests (at least 3)
-            if (step === 2) {
+            // Special validation for interests (at least 3) - only if interests are required
+            if (step === 2 && requiredFields.interests) {
                 const checkedInterests = document.querySelectorAll('input[name="interests"]:checked');
                 const interestsError = document.getElementById('interests-error');
                 if (checkedInterests.length < 3) {

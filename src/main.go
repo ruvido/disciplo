@@ -19,6 +19,26 @@ import (
 	"github.com/pocketbase/pocketbase/core"
 )
 
+// parseSMTPFrom parses "Name <email@domain.com>" format
+func parseSMTPFrom(smtpFrom string) (name, address string) {
+	// Check if it matches "Name <email>" format
+	if strings.Contains(smtpFrom, "<") && strings.Contains(smtpFrom, ">") {
+		// Extract name (everything before <)
+		parts := strings.SplitN(smtpFrom, "<", 2)
+		name = strings.TrimSpace(strings.Trim(parts[0], "\""))
+		
+		// Extract address (between < and >)
+		if len(parts) > 1 {
+			address = strings.TrimSpace(strings.Trim(parts[1], ">"))
+		}
+	} else {
+		// Just an email address without name
+		name = ""
+		address = strings.TrimSpace(smtpFrom)
+	}
+	return name, address
+}
+
 func main() {
 	cfg, err := config.Load()
 	if err != nil {
@@ -47,7 +67,9 @@ func main() {
 			settings.SMTP.TLS = false // Port 587 uses STARTTLS
 			
 			if cfg.SMTPFrom != "" {
-				settings.Meta.SenderName = cfg.SMTPFrom
+				senderName, senderAddress := parseSMTPFrom(cfg.SMTPFrom)
+				settings.Meta.SenderName = senderName
+				settings.Meta.SenderAddress = senderAddress
 			}
 			
 			if err := e.App.Save(settings); err != nil {

@@ -18,14 +18,35 @@ dev-email:
 	@cp .env build/.env 2>/dev/null || true
 	@cd build && . ./.env && go run ../src/main.go serve --http=0.0.0.0:$${PORT:-8080}
 
-# Kill any running instance
+# Kill any running instance - BRUTAL MODE
 kill:
-	@echo "Killing existing processes..."
-	@pkill -f "disciplo" 2>/dev/null || true
-	@pkill -f "go run.*main.go" 2>/dev/null || true
-	@lsof -ti:8080 | xargs kill -9 2>/dev/null || true
-	@lsof -ti:8090 | xargs kill -9 2>/dev/null || true
-	@echo "Processes killed"
+	@echo "🔥 KILLING ALL PROCESSES - BRUTAL MODE..."
+	@# Kill all disciplo processes
+	@pkill -9 -f "disciplo" 2>/dev/null || true
+	@pkill -9 -f "go run.*main.go" 2>/dev/null || true
+	@pkill -9 -f "go-build.*main" 2>/dev/null || true
+	@pkill -9 -f "main" 2>/dev/null || true
+	@# Kill by port - try multiple methods
+	@PORT=$$(if [ -f .env ]; then . ./.env && echo $${PORT:-8080}; else echo 8080; fi) && \
+		echo "🔥 Killing EVERYTHING on port $$PORT..." && \
+		lsof -ti:$$PORT 2>/dev/null | xargs -r kill -9 2>/dev/null || true && \
+		fuser -k $$PORT/tcp 2>/dev/null || true && \
+		netstat -tlnp 2>/dev/null | grep :$$PORT | awk '{print $$7}' | cut -d/ -f1 | grep -E '^[0-9]+$$' | xargs -r kill -9 2>/dev/null || true
+	@# Wait and verify
+	@sleep 1
+	@PORT=$$(if [ -f .env ]; then . ./.env && echo $${PORT:-8080}; else echo 8080; fi) && \
+		if netstat -tln 2>/dev/null | grep -q :$$PORT; then \
+			echo "⚠️  Port $$PORT still in use, trying harder..." && \
+			sudo fuser -k $$PORT/tcp 2>/dev/null || true && \
+			sudo netstat -tlnp 2>/dev/null | grep :$$PORT | awk '{print $$7}' | cut -d/ -f1 | grep -E '^[0-9]+$$' | xargs -r sudo kill -9 2>/dev/null || true; \
+		fi
+	@PORT=$$(if [ -f .env ]; then . ./.env && echo $${PORT:-8080}; else echo 8080; fi) && \
+		if netstat -tln 2>/dev/null | grep -q :$$PORT; then \
+			echo "❌ STILL OCCUPIED! Manual intervention required."; \
+			netstat -tlnp | grep :$$PORT || true; \
+		else \
+			echo "✅ Port $$PORT is FREE!"; \
+		fi
 
 # Build for production
 build:

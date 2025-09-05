@@ -2,6 +2,7 @@ package web
 
 import (
 	"disciplo/src/config"
+	"disciplo/src/email"
 	"encoding/json"
 	"fmt"
 	"html/template"
@@ -107,11 +108,19 @@ func requireAdminAuth(next func(*core.RequestEvent) error) func(*core.RequestEve
 }
 
 type RegistrationData struct {
-	PageTitle   string
-	AppName     string
-	Locations   []string
-	JobFields   []string
-	Interests   []string
+	PageTitle      string
+	AppName        string
+	Locations      []string
+	JobFields      []string
+	Interests      []string
+	RequiredFields map[string]bool
+	Steps          []RegistrationStep
+}
+
+type RegistrationStep struct {
+	Step   int      `json:"step"`
+	Title  string   `json:"title"`
+	Fields []string `json:"fields"`
 }
 
 type RegistrationRequest struct {
@@ -126,24 +135,32 @@ type RegistrationRequest struct {
 	WhyJoin        string   `json:"why_join"`
 }
 
+// PocketBase middleware to redirect authenticated users from public pages
+func redirectAuthenticatedUsers(next func(*core.RequestEvent) error) func(*core.RequestEvent) error {
+	return func(e *core.RequestEvent) error {
+		// Check if user is already authenticated using PocketBase patterns
+		if user := getAuthenticatedUser(e); user != nil {
+			// Redirect admin users to admin dashboard
+			if user.GetBool("admin") {
+				return e.Redirect(http.StatusFound, "/admin/dashboard")
+			}
+			// Redirect regular users to user dashboard
+			return e.Redirect(http.StatusFound, "/dashboard")
+		}
+		// Continue to next handler if not authenticated
+		return next(e)
+	}
+}
+
 func SetupRoutes(app core.App, cfg *config.Config) {
 	app.OnServe().BindFunc(func(e *core.ServeEvent) error {
-		// Root route - redirect to login if not authenticated
-		e.Router.GET("/", func(c *core.RequestEvent) error {
-			// For now, always redirect to login - auth will be handled by client-side
+		// Root route - redirect authenticated users to dashboard, others to login
+		e.Router.GET("/", redirectAuthenticatedUsers(func(c *core.RequestEvent) error {
 			return c.Redirect(http.StatusFound, "/login")
-		})
+		}))
 
-		// Login page
-		e.Router.GET("/login", func(c *core.RequestEvent) error {
-			// If user is already authenticated, redirect to appropriate dashboard
-			if user := getAuthenticatedUser(c); user != nil {
-				if user.GetBool("admin") {
-					return c.Redirect(http.StatusFound, "/admin/dashboard")
-				}
-				return c.Redirect(http.StatusFound, "/dashboard")
-			}
-
+		// Login page - use middleware to redirect authenticated users
+		e.Router.GET("/login", redirectAuthenticatedUsers(func(c *core.RequestEvent) error {
 			tmpl, err := template.ParseFiles("pb_public/templates/login.html")
 			if err != nil {
 				return c.String(http.StatusInternalServerError, "Template error: "+err.Error())
@@ -155,7 +172,7 @@ func SetupRoutes(app core.App, cfg *config.Config) {
 			}
 			
 			return c.HTML(http.StatusOK, buf.String())
-		})
+		}))
 
 		// Logout route - clear session and redirect
 		e.Router.GET("/logout", func(c *core.RequestEvent) error {
@@ -379,10 +396,14 @@ func SetupRoutes(app core.App, cfg *config.Config) {
 			}
 
 			// Get pending requests
-			requests, err := e.App.FindRecordsByFilter("requests", "status = 'pending'", "-created", 50, 0)
+			requests, err := e.App.FindRecordsByFilter("requests", "status = 'pending'", "", 50, 0)
 			if err != nil {
+				// Log error for debugging
+				fmt.Printf("Error finding requests: %v\n", err)
 				// Handle error but continue with empty list
 				requests = []*core.Record{}
+			} else {
+				fmt.Printf("Found %d requests with status='pending'\n", len(requests))
 			}
 
 			data := struct {
@@ -507,13 +528,13 @@ func SetupRoutes(app core.App, cfg *config.Config) {
 		})
 
 		// API endpoint to approve membership request - ADMIN ONLY
-		e.Router.POST("/api/admin/approve-request", func(c *core.RequestEvent) error {
+		e.Router.POST("/api/admin/approve-request/{id}", func(c *core.RequestEvent) error {
 			user := requireAdmin(c)
 			if user == nil {
 				return c.JSON(http.StatusUnauthorized, map[string]interface{}{"error": "Admin access required"})
 			}
 
-			requestId := c.Request.URL.Query().Get("id")
+			requestId := c.Request.PathValue("id")
 			if requestId == "" {
 				return c.JSON(http.StatusBadRequest, map[string]interface{}{"error": "Request ID is required"})
 			}
@@ -524,43 +545,79 @@ func SetupRoutes(app core.App, cfg *config.Config) {
 				return c.JSON(http.StatusNotFound, map[string]interface{}{"error": "Request not found"})
 			}
 
-			// Update request status to approved
-			request.Set("status", "accepted")
-			if err := e.App.Save(request); err != nil {
-				return c.JSON(http.StatusInternalServerError, map[string]interface{}{"error": "Failed to update request"})
+			// Check if request is already processed
+			if request.GetString("status") != "pending" {
+				return c.JSON(http.StatusBadRequest, map[string]interface{}{"error": "Request has already been processed"})
 			}
 
-			// Create user account from approved request
-			userCollection, err := e.App.FindCollectionByNameOrId("users")
+			// Create user account in PocketBase's auth collection
+			authCollection, err := e.App.FindCollectionByNameOrId("_pb_users_auth_")
 			if err != nil {
-				return c.JSON(http.StatusInternalServerError, map[string]interface{}{"error": "Failed to access users collection"})
+				return c.JSON(http.StatusInternalServerError, map[string]interface{}{"error": "Failed to find auth collection"})
 			}
 
-			newUser := core.NewRecord(userCollection)
+			newUser := core.NewRecord(authCollection)
+			
+			// Set basic auth data from request
 			newUser.Set("name", request.GetString("name"))
 			newUser.Set("email", request.GetString("email"))
 			newUser.Set("password", request.GetString("password"))
-			newUser.Set("status", "accepted")
+			newUser.Set("emailVisibility", false)
+			// User starts with verified=false until Telegram is linked
+			
+			// Set additional fields for our platform
 			newUser.Set("admin", false)
-			newUser.Set("verified", false) // Will be true when telegram_id is set
+			newUser.Set("status", "accepted")
+			newUser.Set("telegram_id", "")
+			newUser.Set("telegram_name", "")
+			newUser.Set("groups", "")
+			newUser.Set("group_admin", "")
+			newUser.Set("group_admin_since", "")
 
+			// Save the new user
 			if err := e.App.Save(newUser); err != nil {
-				return c.JSON(http.StatusInternalServerError, map[string]interface{}{"error": "Failed to create user account"})
+				return c.JSON(http.StatusInternalServerError, map[string]interface{}{
+					"error": "Failed to create user account: " + err.Error(),
+				})
 			}
 
-			// TODO: Send approval email with bot deeplink
+			// Send welcome email with Telegram bot link
+			if err := email.SendApprovalWelcome(e.App, request.GetString("email"), request.GetString("name"), cfg.BotUsername); err != nil {
+				fmt.Printf("Warning: Failed to send welcome email: %v\n", err)
+				// Continue with approval process even if email fails
+			}
 
-			return c.JSON(http.StatusOK, map[string]interface{}{"success": true})
+			// Update request with approval details
+			request.Set("status", "approved")
+			request.Set("approved_by", user.Id)
+			request.Set("approved_at", types.NowDateTime())
+			request.Set("created_user_id", newUser.Id)
+			
+			if err := e.App.Save(request); err != nil {
+				// If request update fails, we should consider rolling back user creation
+				// For simplicity, we'll log the error but continue
+				fmt.Printf("Warning: Failed to update request after user creation: %v\n", err)
+			}
+
+			// TODO: Send welcome email to the new user
+			// TODO: Send notification to admin about successful approval
+
+			fmt.Printf("Request %s approved and user %s created successfully\n", requestId, newUser.Id)
+
+			return c.JSON(http.StatusOK, map[string]interface{}{
+				"success": true,
+				"user_id": newUser.Id,
+			})
 		})
 
 		// API endpoint to reject membership request - ADMIN ONLY
-		e.Router.POST("/api/admin/reject-request", func(c *core.RequestEvent) error {
+		e.Router.POST("/api/admin/reject-request/{id}", func(c *core.RequestEvent) error {
 			user := requireAdmin(c)
 			if user == nil {
 				return c.JSON(http.StatusUnauthorized, map[string]interface{}{"error": "Admin access required"})
 			}
 
-			requestId := c.Request.URL.Query().Get("id")
+			requestId := c.Request.PathValue("id")
 			if requestId == "" {
 				return c.JSON(http.StatusBadRequest, map[string]interface{}{"error": "Request ID is required"})
 			}
@@ -640,18 +697,41 @@ func SetupRoutes(app core.App, cfg *config.Config) {
 			disciploConfig = &config.DisciploConfig{}
 		}
 
-		// Registration page
-		e.Router.GET("/register", func(c *core.RequestEvent) error {
+		// Registration page - use middleware to redirect authenticated users
+		e.Router.GET("/register", redirectAuthenticatedUsers(func(c *core.RequestEvent) error {
 			if !disciploConfig.Registration.Enabled {
 				return c.Redirect(http.StatusFound, "/login")
 			}
 
+			// Build required fields map from configuration
+			requiredFields := make(map[string]bool)
+			var steps []RegistrationStep
+			
+			// Extract steps from disciplo config
+			for _, step := range disciploConfig.Registration.Steps {
+				steps = append(steps, RegistrationStep{
+					Step:   step.Step,
+					Title:  step.Title,
+					Fields: step.Fields,
+				})
+				
+				// Mark all fields in steps as required (as per config comment "all fields are required")
+				for _, field := range step.Fields {
+					requiredFields[field] = true
+				}
+			}
+			
+			// Profile picture is optional according to migration
+			requiredFields["profile_picture"] = false
+
 			data := RegistrationData{
-				PageTitle: "Register - " + disciploConfig.General.AppName,
-				AppName:   disciploConfig.General.AppName,
-				Locations: disciploConfig.Registration.Locations.Options,
-				JobFields: disciploConfig.Registration.JobFields.Options,
-				Interests: disciploConfig.Registration.Interests.Options,
+				PageTitle:      "Register - " + disciploConfig.General.AppName,
+				AppName:        disciploConfig.General.AppName,
+				Locations:      disciploConfig.Registration.Locations.Options,
+				JobFields:      disciploConfig.Registration.JobFields.Options,
+				Interests:      disciploConfig.Registration.Interests.Options,
+				RequiredFields: requiredFields,
+				Steps:          steps,
 			}
 
 			tmpl, err := template.ParseFiles("pb_public/templates/register.html")
@@ -665,7 +745,7 @@ func SetupRoutes(app core.App, cfg *config.Config) {
 			}
 
 			return c.HTML(http.StatusOK, buf.String())
-		})
+		}))
 
 		// Registration API endpoint
 		e.Router.POST("/api/register", func(c *core.RequestEvent) error {
@@ -678,7 +758,7 @@ func SetupRoutes(app core.App, cfg *config.Config) {
 
 			// Parse form data
 			name := c.Request.FormValue("name")
-			email := c.Request.FormValue("email")
+			userEmail := c.Request.FormValue("email")
 			password := c.Request.FormValue("password")
 			dateOfBirth := c.Request.FormValue("date_of_birth")
 			city := c.Request.FormValue("city")
@@ -696,21 +776,15 @@ func SetupRoutes(app core.App, cfg *config.Config) {
 				})
 			}
 
-			// Validate file upload exists (basic check)
-			if c.Request.MultipartForm == nil || c.Request.MultipartForm.File["profile_picture"] == nil {
-				return c.JSON(http.StatusBadRequest, map[string]interface{}{
-					"success": false,
-					"error":   "Profile picture is required",
-				})
-			}
-
-			// Basic file size validation
-			fileHeaders := c.Request.MultipartForm.File["profile_picture"]
-			if len(fileHeaders) > 0 && fileHeaders[0].Size > int64(disciploConfig.Registration.Picture.MaxSizeMB*1024*1024) {
-				return c.JSON(http.StatusBadRequest, map[string]interface{}{
-					"success": false,
-					"error":   fmt.Sprintf("File size must be less than %dMB", disciploConfig.Registration.Picture.MaxSizeMB),
-				})
+			// Optional file size validation (if file is uploaded)
+			if c.Request.MultipartForm != nil && c.Request.MultipartForm.File["profile_picture"] != nil {
+				fileHeaders := c.Request.MultipartForm.File["profile_picture"]
+				if len(fileHeaders) > 0 && fileHeaders[0].Size > int64(disciploConfig.Registration.Picture.MaxSizeMB*1024*1024) {
+					return c.JSON(http.StatusBadRequest, map[string]interface{}{
+						"success": false,
+						"error":   fmt.Sprintf("File size must be less than %dMB", disciploConfig.Registration.Picture.MaxSizeMB),
+					})
+				}
 			}
 
 			// Create new request record
@@ -735,7 +809,7 @@ func SetupRoutes(app core.App, cfg *config.Config) {
 
 			// Set record fields
 			record.Set("name", name)
-			record.Set("email", email)
+			record.Set("email", userEmail)
 			record.Set("password", password)
 			dobDateTime := types.DateTime{}
 			dobDateTime.Scan(dob)
@@ -747,7 +821,7 @@ func SetupRoutes(app core.App, cfg *config.Config) {
 			record.Set("why_join", whyJoin)
 			record.Set("status", "pending")
 
-			// Save the record first to get an ID and allow file uploads
+			// Save the record  
 			if err := e.App.Save(record); err != nil {
 				return c.JSON(http.StatusInternalServerError, map[string]interface{}{
 					"success": false,
@@ -755,18 +829,35 @@ func SetupRoutes(app core.App, cfg *config.Config) {
 				})
 			}
 
-			// TODO: Process uploaded files using PocketBase
-			// This will be implemented properly in the next iteration
-			// For now, we'll skip file upload to get basic registration working
+			// Handle file upload - for now we skip complex file processing
+			// Files will be handled by the form validation above
+			// TODO: Implement proper file upload with PocketBase file handling
 
-			// TODO: Send email notifications
-			// This will be implemented in the next step
+			// Send email notification to admin
+			if err := email.SendNewRegistrationNotification(e.App, disciploConfig.General.EmailRequests, name, userEmail); err != nil {
+				// Log error but don't fail the registration
+				fmt.Printf("Failed to send admin notification email: %v\n", err)
+			}
 
 			return c.JSON(http.StatusOK, map[string]interface{}{
 				"success":    true,
 				"message":    "Registration submitted successfully",
 				"request_id": record.Id,
 			})
+		})
+
+		// Catch-all route for undefined paths - MUST BE LAST
+		e.Router.GET("/*", func(c *core.RequestEvent) error {
+			// Check authentication for undefined routes
+			if user := getAuthenticatedUser(c); user != nil {
+				// Authenticated user accessing undefined route → redirect to appropriate dashboard
+				if user.GetBool("admin") {
+					return c.Redirect(http.StatusFound, "/admin/dashboard")
+				}
+				return c.Redirect(http.StatusFound, "/dashboard")
+			}
+			// Unauthenticated user accessing undefined route → redirect to login
+			return c.Redirect(http.StatusFound, "/login")
 		})
 
 		return e.Next()

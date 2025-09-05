@@ -13,8 +13,12 @@ dev: kill
 kill:
 	@echo "Killing existing processes..."
 	@-pkill -f "disciplo" 2>/dev/null || true
-	@-pkill -f "go run src/main.go" 2>/dev/null || true
-	@sleep 1
+	@-pkill -f "go run.*main.go" 2>/dev/null || true
+	@-pkill -f "main.go" 2>/dev/null || true
+	@-lsof -ti:8080 | xargs -r kill -9 2>/dev/null || true
+	@-lsof -ti:8081 | xargs -r kill -9 2>/dev/null || true
+	@-lsof -ti:$${PORT:-8080} | xargs -r kill -9 2>/dev/null || true
+	@sleep 2
 
 # Build for production
 build:

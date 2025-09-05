@@ -1,6 +1,34 @@
 # Disciplo - Community Platform MVP
 
-Community platform with web onboarding, built with Go, PocketBase, and Telegram Bot API.
+**🔒 SECURITY-FIRST** Community platform with web onboarding, built with Go, PocketBase, and Telegram Bot API.
+
+## ⚠️ SECURITY & PRODUCTION REQUIREMENTS
+
+### Environment & Secrets Management
+- **NEVER commit .env files or secrets to repository**
+- **ALWAYS use environment variables for all configuration**
+- **NEVER hardcode credentials, tokens, or sensitive data**
+- **Validate all environment variables on startup with proper error messages**
+- **Use strong passwords and tokens (minimum 32 characters for tokens)**
+
+### Authentication & Authorization
+- **ALWAYS validate user permissions before data access**
+- **ALWAYS use PocketBase built-in authentication - never roll your own**
+- **ALWAYS sanitize user inputs and validate data types**
+- **ALWAYS use HTTPS in production (no HTTP endpoints)**
+- **ALWAYS implement proper session management and token expiration**
+
+### Database Security
+- **ALWAYS use PocketBase SDK methods - never raw SQL**
+- **ALWAYS validate record permissions before operations**
+- **ALWAYS implement proper data validation rules in collections**
+- **ALWAYS use transactions for multi-step operations**
+
+### Bot Security
+- **ALWAYS validate Telegram webhook signatures**
+- **ALWAYS sanitize user inputs from Telegram**
+- **ALWAYS implement rate limiting on bot commands**
+- **NEVER expose internal system information through bot responses**
 
 ## Vision
 
@@ -189,6 +217,17 @@ Email templates are externalized and customizable:
 - Test all bot commands before marking as complete
 - Less is more: use robust, minimal code, don't create complex or redundant structures
 
-- dont ask for permission to execute cli commands within the project
-- use env variables from env dont hardcode!
-- killa sempre i processi che lanci, quando finisci il comando
+### **Process Management & Development Standards**
+- **ALWAYS use `make kill` before starting new processes**
+- **NEVER leave processes running without explicit termination**
+- **ALWAYS check for running processes with `lsof -i:PORT` before starting servers**
+- **Use environment variables from .env - NEVER hardcode ports or configuration**
+- **Clean process management is MANDATORY - orphaned processes are unacceptable**
+- **Development workflow: `make kill` → `make dev` → work → `make kill` when done**
+
+### **Strict Development Workflow**
+1. **Before starting**: Run `make kill` to clean any existing processes
+2. **During development**: Use `make dev` for development server
+3. **After work**: ALWAYS run `make kill` to clean up processes
+4. **Never assume**: Always verify ports are free with `lsof -i:PORT`
+5. **Process hygiene**: Leave the system clean for the next developer

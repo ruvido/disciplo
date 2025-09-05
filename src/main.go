@@ -203,11 +203,17 @@ func handleStartCommand(bot *tgbotapi.BotAPI, message *tgbotapi.Message, app cor
 		response = "Welcome to **Disciplo**! 🎉\n\nTo connect your Telegram account, you need an invitation token from the admin.\n\n**How to get access:**\n1. Contact your administrator\n2. Get an invitation link\n3. Click the link to return here with a token"
 	}
 
+	// Add dashboard link logic before creating message
+	dashboardURL := cfg.Host + "/dashboard"
+	if !strings.HasPrefix(cfg.Host, "https://") {
+		// For HTTP URLs, add dashboard link as text
+		response += "\n\n🌐 **Dashboard**: " + dashboardURL
+	}
+
 	msg := tgbotapi.NewMessage(message.Chat.ID, response)
 	msg.ParseMode = tgbotapi.ModeMarkdown
 
-	// Add inline keyboard for dashboard access only if HTTPS, otherwise show text
-	dashboardURL := cfg.Host + "/dashboard"
+	// Add inline keyboard for dashboard access only if HTTPS
 	if strings.HasPrefix(cfg.Host, "https://") {
 		keyboard := tgbotapi.NewInlineKeyboardMarkup(
 			tgbotapi.NewInlineKeyboardRow(
@@ -215,9 +221,6 @@ func handleStartCommand(bot *tgbotapi.BotAPI, message *tgbotapi.Message, app cor
 			),
 		)
 		msg.ReplyMarkup = keyboard
-	} else {
-		// For HTTP URLs, add dashboard link as text
-		response += "\n\n🌐 **Dashboard**: " + dashboardURL
 	}
 
 	bot.Send(msg)

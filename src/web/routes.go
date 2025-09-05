@@ -214,6 +214,11 @@ func SetupRoutes(app core.App, cfg *config.Config) {
 			if user == nil {
 				return c.Redirect(http.StatusFound, "/login")
 			}
+			
+			// Redirect admin users to admin dashboard
+			if user.GetBool("admin") {
+				return c.Redirect(http.StatusFound, "/admin/dashboard")
+			}
 
 			userData := &UserData{
 				Name:         user.GetString("name"),
@@ -360,6 +365,53 @@ func SetupRoutes(app core.App, cfg *config.Config) {
 			return c.HTML(http.StatusOK, buf.String())
 		})
 
+		// Admin requests page - PROTECTED
+		e.Router.GET("/admin/requests", func(c *core.RequestEvent) error {
+			user := getAuthenticatedUser(c)
+			if user == nil || !user.GetBool("admin") {
+				return c.Redirect(http.StatusFound, "/login")
+			}
+
+			// Load disciplo configuration
+			disciploConfig, err := config.LoadDisciploConfig()
+			if err != nil {
+				disciploConfig = &config.DisciploConfig{}
+			}
+
+			// Get pending requests
+			requests, err := e.App.FindRecordsByFilter("requests", "status = 'pending'", "-created", 50, 0)
+			if err != nil {
+				// Handle error but continue with empty list
+				requests = []*core.Record{}
+			}
+
+			data := struct {
+				AdminEmail   string
+				AdminName    string
+				Requests     []*core.Record
+				AppName      string
+				Config       *config.DisciploConfig
+			}{
+				AdminEmail:   user.GetString("email"),
+				AdminName:    user.GetString("name"),
+				Requests:     requests,
+				AppName:      disciploConfig.General.AppName,
+				Config:       disciploConfig,
+			}
+
+			tmpl, err := template.ParseFiles("pb_public/templates/admin_requests.html")
+			if err != nil {
+				return c.String(http.StatusInternalServerError, "Template error: "+err.Error())
+			}
+
+			var buf strings.Builder
+			if err := tmpl.Execute(&buf, data); err != nil {
+				return c.String(http.StatusInternalServerError, "Template error")
+			}
+
+			return c.HTML(http.StatusOK, buf.String())
+		})
+
 		// Admin dashboard - PROTECTED
 		e.Router.GET("/admin/dashboard", func(c *core.RequestEvent) error {
 			user := getAuthenticatedUser(c)
@@ -452,6 +504,82 @@ func SetupRoutes(app core.App, cfg *config.Config) {
 			return c.JSON(http.StatusOK, map[string]interface{}{
 				"success": true,
 			})
+		})
+
+		// API endpoint to approve membership request - ADMIN ONLY
+		e.Router.POST("/api/admin/approve-request", func(c *core.RequestEvent) error {
+			user := requireAdmin(c)
+			if user == nil {
+				return c.JSON(http.StatusUnauthorized, map[string]interface{}{"error": "Admin access required"})
+			}
+
+			requestId := c.Request.URL.Query().Get("id")
+			if requestId == "" {
+				return c.JSON(http.StatusBadRequest, map[string]interface{}{"error": "Request ID is required"})
+			}
+			
+			// Find the request
+			request, err := e.App.FindRecordById("requests", requestId)
+			if err != nil {
+				return c.JSON(http.StatusNotFound, map[string]interface{}{"error": "Request not found"})
+			}
+
+			// Update request status to approved
+			request.Set("status", "accepted")
+			if err := e.App.Save(request); err != nil {
+				return c.JSON(http.StatusInternalServerError, map[string]interface{}{"error": "Failed to update request"})
+			}
+
+			// Create user account from approved request
+			userCollection, err := e.App.FindCollectionByNameOrId("users")
+			if err != nil {
+				return c.JSON(http.StatusInternalServerError, map[string]interface{}{"error": "Failed to access users collection"})
+			}
+
+			newUser := core.NewRecord(userCollection)
+			newUser.Set("name", request.GetString("name"))
+			newUser.Set("email", request.GetString("email"))
+			newUser.Set("password", request.GetString("password"))
+			newUser.Set("status", "accepted")
+			newUser.Set("admin", false)
+			newUser.Set("verified", false) // Will be true when telegram_id is set
+
+			if err := e.App.Save(newUser); err != nil {
+				return c.JSON(http.StatusInternalServerError, map[string]interface{}{"error": "Failed to create user account"})
+			}
+
+			// TODO: Send approval email with bot deeplink
+
+			return c.JSON(http.StatusOK, map[string]interface{}{"success": true})
+		})
+
+		// API endpoint to reject membership request - ADMIN ONLY
+		e.Router.POST("/api/admin/reject-request", func(c *core.RequestEvent) error {
+			user := requireAdmin(c)
+			if user == nil {
+				return c.JSON(http.StatusUnauthorized, map[string]interface{}{"error": "Admin access required"})
+			}
+
+			requestId := c.Request.URL.Query().Get("id")
+			if requestId == "" {
+				return c.JSON(http.StatusBadRequest, map[string]interface{}{"error": "Request ID is required"})
+			}
+			
+			// Find the request
+			request, err := e.App.FindRecordById("requests", requestId)
+			if err != nil {
+				return c.JSON(http.StatusNotFound, map[string]interface{}{"error": "Request not found"})
+			}
+
+			// Update request status to rejected
+			request.Set("status", "rejected")
+			if err := e.App.Save(request); err != nil {
+				return c.JSON(http.StatusInternalServerError, map[string]interface{}{"error": "Failed to update request"})
+			}
+
+			// TODO: Send rejection email (if implemented)
+
+			return c.JSON(http.StatusOK, map[string]interface{}{"success": true})
 		})
 
 		// API endpoint for password change - PROTECTED
